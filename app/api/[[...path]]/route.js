@@ -130,6 +130,23 @@ export async function GET(req, { params }) {
       return NextResponse.json({ hackathons: docs.map(stripId) });
     }
 
+    if (segs[0] === 'scrape') {
+      const items = await runAllScrapers();
+      const { hackathons, scrapeRuns } = await getCollections();
+      let inserted = 0;
+      for (const item of items) {
+        const ex = await hackathons.findOne({ name: item.name, organizer: item.organizer });
+        if (!ex) { await hackathons.insertOne(item); inserted++; }
+      }
+      await scrapeRuns.insertOne({
+        id: uuid(),
+        ranAt: new Date().toISOString(),
+        fetched: items.length,
+        inserted,
+      });
+      return NextResponse.json({ ok: true, fetched: items.length, inserted });
+    }
+
     return NextResponse.json({ error: 'route not found' }, { status: 404 });
   } catch (e) {
     console.error('GET error', e);
