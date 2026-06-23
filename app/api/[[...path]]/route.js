@@ -4,6 +4,8 @@ import { getCollections } from '@/lib/mongo';
 import { SEED_HACKATHONS } from '@/lib/seedHackathons';
 import { runAllScrapers } from '@/lib/scrapers';
 
+export const dynamic = 'force-dynamic';
+
 async function ensureSeed() {
   const { hackathons } = await getCollections();
   const count = await hackathons.countDocuments();
