@@ -496,6 +496,12 @@ function App() {
   useEffect(() => setMounted(true), []);
 
   const { user, isSignedIn } = useUser();
+  useEffect(() => {
+    console.log("--- CLERK DEBUG INFO ---");
+    console.log("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:", process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? "LOADED SUCCESS" : "MISSING/EMPTY");
+    console.log("isSignedIn:", isSignedIn);
+    console.log("------------------------");
+  }, [isSignedIn]);
   const [sid, setSid] = useState(null);
   const activeUserId = isSignedIn ? user?.id : sid;
   const [tab, setTab] = useState('discover');
