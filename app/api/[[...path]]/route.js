@@ -378,6 +378,58 @@ export async function POST(req, { params }) {
       return NextResponse.json({ ok: true, count: SEED_HACKATHONS.length });
     }
 
+    if (segs[0] === 'hackathons') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized. Please login to submit a hackathon.' }, { status: 401 });
+
+      const body = await req.json();
+      const {
+        name,
+        organizer,
+        description,
+        prizePool,
+        minTeam,
+        maxTeam,
+        location,
+        registrationDeadline,
+        registrationLink,
+        themes,
+        mode,
+        beginnerFriendly,
+        studentOnly
+      } = body;
+
+      if (!name || !organizer || !description || !registrationDeadline || !registrationLink) {
+        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      }
+
+      const { hackathons } = await getCollections();
+      const newHackathon = {
+        id: uuid(),
+        name,
+        organizer,
+        description,
+        prizePool: Number(prizePool || 0),
+        teamSize: {
+          min: Number(minTeam || 1),
+          max: Number(maxTeam || 4)
+        },
+        location: location || 'Online',
+        registrationDeadline: new Date(registrationDeadline).toISOString(),
+        registrationLink,
+        themes: Array.isArray(themes) ? themes : [],
+        source: 'Local',
+        mode: mode || 'online',
+        beginnerFriendly: !!beginnerFriendly,
+        studentOnly: !!studentOnly,
+        saves: 0,
+        createdAt: new Date().toISOString()
+      };
+
+      await hackathons.insertOne(newHackathon);
+      return NextResponse.json({ ok: true, hackathon: stripId(newHackathon) });
+    }
+
     if (segs[0] === 'users' && segs[1] === 'me') {
       const user = await currentUser();
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
