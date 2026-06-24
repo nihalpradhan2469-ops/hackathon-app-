@@ -7,6 +7,7 @@ import {
   Search, Radar, Sparkles, Bookmark, BookmarkCheck, Trophy, Clock, MapPin,
   Users, Filter as FilterIcon, Flame, TrendingUp, LayoutDashboard, ExternalLink,
   CircleDot, IndianRupee, ArrowRight, Zap, AlertTriangle, X, Sun, Moon,
+  Copy, Mail, Link2, Share2, Check,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useUser, SignInButton, UserButton } from '@clerk/nextjs';
@@ -850,6 +851,13 @@ function TeamsPanel({ hackathons }) {
   const [newTeamHackathonId, setNewTeamHackathonId] = useState('');
   const [creatingTeam, setCreatingTeam] = useState(false);
 
+  // Invite State
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteTeam, setInviteTeam] = useState(null);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [sendingInvite, setSendingInvite] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const fetchProfile = useCallback(async () => {
     if (!isSignedIn) return;
     try {
@@ -996,6 +1004,56 @@ function TeamsPanel({ hackathons }) {
     }
   };
 
+  const openInviteModal = (team) => {
+    setInviteTeam(team);
+    setInviteEmail('');
+    setLinkCopied(false);
+    setInviteOpen(true);
+  };
+
+  const getInviteLink = () => {
+    if (!inviteTeam?.inviteCode) return '';
+    return `${window.location.origin}/invite/${inviteTeam.inviteCode}`;
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(getInviteLink());
+      setLinkCopied(true);
+      toast.success('Invite link copied!');
+      setTimeout(() => setLinkCopied(false), 3000);
+    } catch {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleSendEmailInvite = async (e) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) {
+      toast.error('Please enter an email address');
+      return;
+    }
+    setSendingInvite(true);
+    try {
+      const res = await fetch(`/api/teams/${inviteTeam.id}/send-invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail.trim() }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        toast.error(data.error);
+      } else {
+        toast.success(`Invite sent to ${inviteEmail}!`);
+        setInviteEmail('');
+      }
+    } catch {
+      toast.error('Failed to send invite');
+    } finally {
+      setSendingInvite(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card/30 p-6 rounded-2xl border border-border/40 backdrop-blur-md">
@@ -1109,9 +1167,14 @@ function TeamsPanel({ hackathons }) {
 
                       <div className="flex items-center justify-end gap-2 pt-2">
                         {isLeader ? (
-                          <Button onClick={() => handleDeleteTeam(team.id)} variant="destructive" size="sm" className="h-8 text-xs">
-                            Delete Team
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button onClick={() => openInviteModal(team)} variant="outline" size="sm" className="h-8 text-xs border-violet-500/30 text-violet-300 hover:bg-violet-500/10">
+                              <Share2 className="w-3 h-3 mr-1" /> Invite
+                            </Button>
+                            <Button onClick={() => handleDeleteTeam(team.id)} variant="destructive" size="sm" className="h-8 text-xs">
+                              Delete Team
+                            </Button>
+                          </div>
                         ) : isMember ? (
                           <Button onClick={() => handleLeaveTeam(team.id)} variant="outline" size="sm" className="h-8 text-xs">
                             Leave Team
@@ -1298,6 +1361,85 @@ function TeamsPanel({ hackathons }) {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite Members Dialog */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="sm:max-w-[480px] bg-card border-border/40">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="w-5 h-5 text-violet-400" /> Invite Members
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-5 pt-2">
+            {/* Team Info */}
+            {inviteTeam && (
+              <div className="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4 text-center">
+                <h3 className="font-bold text-lg">{inviteTeam.name}</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {inviteTeam.members?.length || 0}/{inviteTeam.maxSize} members
+                </p>
+              </div>
+            )}
+
+            {/* Copy Invite Link */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5 text-sm font-semibold">
+                <Link2 className="w-4 h-4 text-violet-400" /> Invite Link
+              </Label>
+              <div className="flex gap-2">
+                <Input 
+                  readOnly 
+                  value={getInviteLink()} 
+                  className="bg-background/50 border-border/40 text-xs font-mono"
+                />
+                <Button 
+                  onClick={handleCopyLink} 
+                  variant="outline" 
+                  size="sm"
+                  className={`shrink-0 px-3 transition-all ${linkCopied ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' : 'border-violet-500/30 text-violet-300 hover:bg-violet-500/10'}`}
+                >
+                  {linkCopied ? <><Check className="w-4 h-4 mr-1" /> Copied</> : <><Copy className="w-4 h-4 mr-1" /> Copy</>}
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">Share this link with anyone to let them join your team.</p>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-border/40"></div>
+              <span className="text-xs text-muted-foreground font-medium">OR</span>
+              <div className="h-px flex-1 bg-border/40"></div>
+            </div>
+
+            {/* Email Invite */}
+            <form onSubmit={handleSendEmailInvite} className="space-y-2">
+              <Label className="flex items-center gap-1.5 text-sm font-semibold">
+                <Mail className="w-4 h-4 text-fuchsia-400" /> Send Email Invite
+              </Label>
+              <div className="flex gap-2">
+                <Input 
+                  type="email"
+                  placeholder="teammate@example.com"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  className="bg-background/50 border-border/40"
+                  required
+                />
+                <Button 
+                  type="submit" 
+                  disabled={sendingInvite}
+                  size="sm"
+                  className="shrink-0 px-4 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white hover:opacity-90"
+                >
+                  {sendingInvite ? 'Sending...' : 'Send'}
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">An invite email with the join link will be sent to this address.</p>
+            </form>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

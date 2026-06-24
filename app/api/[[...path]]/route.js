@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuid } from 'uuid';
+import crypto from 'crypto';
 import { getCollections } from '@/lib/mongo';
 import { SEED_HACKATHONS } from '@/lib/seedHackathons';
 import { runAllScrapers } from '@/lib/scrapers';
 import { currentUser } from '@clerk/nextjs/server';
-import { sendNewHackathonAlert, sendWeeklyDigest } from '@/lib/email';
+import { sendNewHackathonAlert, sendWeeklyDigest, sendTeamInvite } from '@/lib/email';
+
+function generateInviteCode() {
+  return crypto.randomBytes(4).toString('hex');
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -217,6 +222,24 @@ export async function GET(req, { params }) {
       return NextResponse.json({ count: docs.length, teammates: docs.map(stripId) });
     }
 
+    // GET /api/teams/invite/[code] — lookup team by invite code
+    if (segs[0] === 'teams' && segs[1] === 'invite' && segs[2]) {
+      const inviteCode = segs[2];
+      const { teams, users, hackathons } = await getCollections();
+      const team = await teams.findOne({ inviteCode });
+      if (!team) return NextResponse.json({ error: 'Invalid or expired invite link' }, { status: 404 });
+      const hackathon = await hackathons.findOne({ id: team.hackathonId });
+      if (team.members && team.members.length) {
+        const userIds = team.members.map(m => m.userId);
+        const memberProfiles = await users.find({ clerkId: { $in: userIds } }).toArray();
+        team.members = team.members.map(m => {
+          const profile = memberProfiles.find(p => p.clerkId === m.userId);
+          return { ...m, name: profile?.name || 'Anonymous Developer', avatar: profile?.avatar || '' };
+        });
+      }
+      return NextResponse.json({ team: stripId(team), hackathonName: hackathon?.name || 'Hackathon' });
+    }
+
     if (segs[0] === 'teams') {
       const hackathonId = url.searchParams.get('hackathonId');
       const { teams, users } = await getCollections();
@@ -377,6 +400,51 @@ export async function POST(req, { params }) {
       return NextResponse.json({ ok: true });
     }
 
+    // POST /api/teams/invite/[code]/join — join team via invite code
+    if (segs[0] === 'teams' && segs[1] === 'invite' && segs[2] && segs[3] === 'join') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const inviteCode = segs[2];
+      const { teams } = await getCollections();
+      const team = await teams.findOne({ inviteCode });
+      if (!team) return NextResponse.json({ error: 'Invalid invite link' }, { status: 404 });
+      if (team.members.some(m => m.userId === user.id)) {
+        return NextResponse.json({ error: 'Already in team' }, { status: 400 });
+      }
+      if (team.members.length >= team.maxSize) {
+        return NextResponse.json({ error: 'Team is full' }, { status: 400 });
+      }
+      await teams.updateOne(
+        { inviteCode },
+        {
+          $push: { members: { userId: user.id, role: 'member', joinedAt: new Date().toISOString() } },
+          $set: { updatedAt: new Date().toISOString() }
+        }
+      );
+      return NextResponse.json({ ok: true, teamId: team.id });
+    }
+
+    // POST /api/teams/[teamId]/send-invite — send invite email
+    if (segs[0] === 'teams' && segs[2] === 'send-invite') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const teamId = segs[1];
+      const body = await req.json();
+      const { email } = body;
+      if (!email) return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+      const { teams } = await getCollections();
+      const team = await teams.findOne({ id: teamId });
+      if (!team) return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+      if (team.createdBy !== user.id) {
+        return NextResponse.json({ error: 'Only team leader can send invites' }, { status: 403 });
+      }
+      const inviterName = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.emailAddresses?.[0]?.emailAddress || 'Someone';
+      const origin = new URL(req.url).origin;
+      const inviteLink = `${origin}/invite/${team.inviteCode}`;
+      await sendTeamInvite(email, team.name, inviterName, inviteLink);
+      return NextResponse.json({ ok: true });
+    }
+
     if (segs[0] === 'teams' && segs[2] === 'join') {
       const user = await currentUser();
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -444,11 +512,13 @@ export async function POST(req, { params }) {
         return NextResponse.json({ error: 'hackathonId, name, and description are required' }, { status: 400 });
       }
       const { teams } = await getCollections();
+      const inviteCode = generateInviteCode();
       const newTeam = {
         id: uuid(),
         hackathonId,
         name,
         description,
+        inviteCode,
         createdBy: user.id,
         members: [
           { userId: user.id, role: 'leader', joinedAt: new Date().toISOString() }
