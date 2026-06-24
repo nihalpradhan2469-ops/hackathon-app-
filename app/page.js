@@ -7,7 +7,7 @@ import {
   Search, Radar, Sparkles, Bookmark, BookmarkCheck, Trophy, Clock, MapPin,
   Users, Filter as FilterIcon, Flame, TrendingUp, LayoutDashboard, ExternalLink,
   CircleDot, IndianRupee, ArrowRight, Zap, AlertTriangle, X, Sun, Moon,
-  Copy, Mail, Link2, Share2, Check,
+  Copy, Mail, Link2, Share2, Check, RefreshCw,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useUser, SignInButton, UserButton } from '@clerk/nextjs';
@@ -557,6 +557,26 @@ function App() {
     }
   }, [buildQuery]);
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    const toastId = toast.loading('Syncing latest hackathons from all platforms...');
+    try {
+      const res = await fetch('/api/scrape').then(r => r.json());
+      if (res.ok) {
+        toast.success(`Sync complete! Fetched ${res.fetched} hackathons (${res.inserted} new).`, { id: toastId });
+        await refresh();
+      } else {
+        toast.error('Sync failed: ' + (res.error || 'Unknown error'), { id: toastId });
+      }
+    } catch (e) {
+      toast.error('Sync failed: Server error', { id: toastId });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const refreshSaved = useCallback(async () => {
     if (!activeUserId) return;
     const r = await fetch(`/api/saved?userId=${activeUserId}`).then(r => r.json());
@@ -704,6 +724,15 @@ function App() {
                       <SelectItem value="new">Newest</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Button 
+                    variant="outline" 
+                    className="h-11 gap-2 border-primary/20 hover:border-primary/50 text-foreground transition-all shrink-0" 
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-primary' : ''}`} />
+                    <span>{isSyncing ? 'Sync' : 'Sync Latest'}</span>
+                  </Button>
                   <Sheet>
                     <SheetTrigger asChild>
                       <Button variant="outline" className="lg:hidden h-11">
