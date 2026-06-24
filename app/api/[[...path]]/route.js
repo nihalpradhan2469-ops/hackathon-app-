@@ -3,6 +3,8 @@ import { v4 as uuid } from 'uuid';
 import { getCollections } from '@/lib/mongo';
 import { SEED_HACKATHONS } from '@/lib/seedHackathons';
 import { runAllScrapers } from '@/lib/scrapers';
+import { currentUser } from '@clerk/nextjs/server';
+import { sendNewHackathonAlert, sendWeeklyDigest } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,7 +116,7 @@ export async function GET(req, { params }) {
     }
 
     if (segs[0] === 'saved') {
-      const sid = url.searchParams.get('sid');
+      const sid = url.searchParams.get('sid') || url.searchParams.get('userId');
       if (!sid) return NextResponse.json({ hackathons: [] });
       const { saved, hackathons } = await getCollections();
       const rows = await saved.find({ sid }).toArray();
@@ -136,9 +138,14 @@ export async function GET(req, { params }) {
       const items = await runAllScrapers();
       const { hackathons, scrapeRuns } = await getCollections();
       let inserted = 0;
+      const newHackathons = [];
       for (const item of items) {
         const ex = await hackathons.findOne({ name: item.name, organizer: item.organizer });
-        if (!ex) { await hackathons.insertOne(item); inserted++; }
+        if (!ex) {
+          await hackathons.insertOne(item);
+          newHackathons.push(item);
+          inserted++;
+        }
       }
       await scrapeRuns.insertOne({
         id: uuid(),
@@ -146,7 +153,120 @@ export async function GET(req, { params }) {
         fetched: items.length,
         inserted,
       });
+
+      if (newHackathons.length > 0) {
+        try {
+          const { alerts } = await getCollections();
+          const activeAlerts = await alerts.find({ enabled: true, type: 'instant' }).toArray();
+          for (const alert of activeAlerts) {
+            const matching = newHackathons.filter(h => {
+              const filters = alert.filters || {};
+              if (filters.themes && filters.themes.length > 0) {
+                const hasTheme = h.themes && h.themes.some(t => filters.themes.includes(t));
+                if (!hasTheme) return false;
+              }
+              if (filters.minPrize > 0 && (h.prizePool || 0) < filters.minPrize) {
+                return false;
+              }
+              if (filters.mode && h.mode !== filters.mode) {
+                return false;
+              }
+              if (filters.beginnerFriendly && !h.beginnerFriendly) {
+                return false;
+              }
+              return true;
+            });
+
+            if (matching.length > 0) {
+              await sendNewHackathonAlert(alert.email, matching);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to match alerts:', err);
+        }
+      }
       return NextResponse.json({ ok: true, fetched: items.length, inserted });
+    }
+
+    if (segs[0] === 'users' && segs[1] === 'me') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const { users } = await getCollections();
+      let dbUser = await users.findOne({ clerkId: user.id });
+      if (!dbUser) {
+        dbUser = {
+          clerkId: user.id,
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User',
+          email: user.emailAddresses[0]?.emailAddress || '',
+          avatar: user.imageUrl || '',
+          skills: [],
+          bio: '',
+          github: '',
+          linkedin: '',
+          lookingForTeam: false,
+          createdAt: new Date().toISOString(),
+        };
+        await users.insertOne(dbUser);
+      }
+      return NextResponse.json(dbUser);
+    }
+
+    if (segs[0] === 'users' && segs[1] === 'teammates') {
+      const { users } = await getCollections();
+      const docs = await users.find({ lookingForTeam: true }).toArray();
+      return NextResponse.json({ count: docs.length, teammates: docs.map(stripId) });
+    }
+
+    if (segs[0] === 'teams') {
+      const hackathonId = url.searchParams.get('hackathonId');
+      const { teams, users } = await getCollections();
+      const query = {};
+      if (hackathonId) query.hackathonId = hackathonId;
+      const docs = await teams.find(query).toArray();
+      
+      for (const team of docs) {
+        if (team.members && team.members.length) {
+          const userIds = team.members.map(m => m.userId);
+          const memberProfiles = await users.find({ clerkId: { $in: userIds } }).toArray();
+          team.members = team.members.map(m => {
+            const profile = memberProfiles.find(p => p.clerkId === m.userId);
+            return {
+              ...m,
+              name: profile?.name || 'Anonymous Developer',
+              avatar: profile?.avatar || '',
+              skills: profile?.skills || [],
+              bio: profile?.bio || '',
+              github: profile?.github || '',
+              linkedin: profile?.linkedin || '',
+            };
+          });
+        }
+      }
+      return NextResponse.json({ count: docs.length, teams: docs.map(stripId) });
+    }
+
+    if (segs[0] === 'alerts') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const { alerts } = await getCollections();
+      let alertPref = await alerts.findOne({ userId: user.id });
+      if (!alertPref) {
+        alertPref = {
+          userId: user.id,
+          email: user.emailAddresses[0]?.emailAddress || '',
+          type: 'weekly',
+          filters: {
+            themes: [],
+            minPrize: 0,
+            mode: '',
+            beginnerFriendly: false,
+          },
+          enabled: false,
+          createdAt: new Date().toISOString(),
+        };
+        await alerts.insertOne(alertPref);
+      }
+      return NextResponse.json(stripId(alertPref));
     }
 
     return NextResponse.json({ error: 'route not found' }, { status: 404 });
@@ -162,12 +282,13 @@ export async function POST(req, { params }) {
   try {
     if (segs[0] === 'saved') {
       const body = await req.json();
-      const { sid, hackathonId } = body;
-      if (!sid || !hackathonId) return NextResponse.json({ error: 'sid + hackathonId required' }, { status: 400 });
+      const { sid, userId, hackathonId } = body;
+      const idToUse = sid || userId;
+      if (!idToUse || !hackathonId) return NextResponse.json({ error: 'sid or userId + hackathonId required' }, { status: 400 });
       const { saved, hackathons } = await getCollections();
-      const exists = await saved.findOne({ sid, hackathonId });
+      const exists = await saved.findOne({ sid: idToUse, hackathonId });
       if (!exists) {
-        await saved.insertOne({ id: uuid(), sid, hackathonId, createdAt: new Date().toISOString() });
+        await saved.insertOne({ id: uuid(), sid: idToUse, hackathonId, createdAt: new Date().toISOString() });
         await hackathons.updateOne({ id: hackathonId }, { $inc: { saves: 1 } });
       }
       return NextResponse.json({ ok: true });
@@ -177,9 +298,14 @@ export async function POST(req, { params }) {
       const items = await runAllScrapers();
       const { hackathons, scrapeRuns } = await getCollections();
       let inserted = 0;
+      const newHackathons = [];
       for (const item of items) {
         const ex = await hackathons.findOne({ name: item.name, organizer: item.organizer });
-        if (!ex) { await hackathons.insertOne(item); inserted++; }
+        if (!ex) {
+          await hackathons.insertOne(item);
+          newHackathons.push(item);
+          inserted++;
+        }
       }
       await scrapeRuns.insertOne({
         id: uuid(),
@@ -187,6 +313,38 @@ export async function POST(req, { params }) {
         fetched: items.length,
         inserted,
       });
+
+      if (newHackathons.length > 0) {
+        try {
+          const { alerts } = await getCollections();
+          const activeAlerts = await alerts.find({ enabled: true, type: 'instant' }).toArray();
+          for (const alert of activeAlerts) {
+            const matching = newHackathons.filter(h => {
+              const filters = alert.filters || {};
+              if (filters.themes && filters.themes.length > 0) {
+                const hasTheme = h.themes && h.themes.some(t => filters.themes.includes(t));
+                if (!hasTheme) return false;
+              }
+              if (filters.minPrize > 0 && (h.prizePool || 0) < filters.minPrize) {
+                return false;
+              }
+              if (filters.mode && h.mode !== filters.mode) {
+                return false;
+              }
+              if (filters.beginnerFriendly && !h.beginnerFriendly) {
+                return false;
+              }
+              return true;
+            });
+
+            if (matching.length > 0) {
+              await sendNewHackathonAlert(alert.email, matching);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to match alerts:', err);
+        }
+      }
       return NextResponse.json({ ok: true, fetched: items.length, inserted });
     }
 
@@ -195,6 +353,175 @@ export async function POST(req, { params }) {
       await hackathons.deleteMany({});
       await hackathons.insertMany(SEED_HACKATHONS);
       return NextResponse.json({ ok: true, count: SEED_HACKATHONS.length });
+    }
+
+    if (segs[0] === 'users' && segs[1] === 'me') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const body = await req.json();
+      const { skills, bio, github, linkedin, lookingForTeam } = body;
+      const { users } = await getCollections();
+      await users.updateOne(
+        { clerkId: user.id },
+        {
+          $set: {
+            skills: skills || [],
+            bio: bio || '',
+            github: github || '',
+            linkedin: linkedin || '',
+            lookingForTeam: !!lookingForTeam,
+            updatedAt: new Date().toISOString(),
+          }
+        }
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    if (segs[0] === 'teams' && segs[2] === 'join') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const teamId = segs[1];
+      const { teams } = await getCollections();
+      const team = await teams.findOne({ id: teamId });
+      if (!team) return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+      if (team.members.some(m => m.userId === user.id)) {
+        return NextResponse.json({ error: 'Already in team' }, { status: 400 });
+      }
+      if (team.members.length >= team.maxSize) {
+        return NextResponse.json({ error: 'Team is full' }, { status: 400 });
+      }
+      await teams.updateOne(
+        { id: teamId },
+        {
+          $push: { members: { userId: user.id, role: 'member', joinedAt: new Date().toISOString() } },
+          $set: { updatedAt: new Date().toISOString() }
+        }
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    if (segs[0] === 'teams' && segs[2] === 'leave') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const teamId = segs[1];
+      const { teams } = await getCollections();
+      const team = await teams.findOne({ id: teamId });
+      if (!team) return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+      const memberIndex = team.members.findIndex(m => m.userId === user.id);
+      if (memberIndex === -1) {
+        return NextResponse.json({ error: 'Not a member of this team' }, { status: 400 });
+      }
+      const member = team.members[memberIndex];
+      if (member.role === 'leader') {
+        if (team.members.length === 1) {
+          await teams.deleteOne({ id: teamId });
+        } else {
+          const updatedMembers = team.members.filter(m => m.userId !== user.id);
+          updatedMembers[0].role = 'leader';
+          await teams.updateOne(
+            { id: teamId },
+            { $set: { members: updatedMembers, updatedAt: new Date().toISOString() } }
+          );
+        }
+      } else {
+        await teams.updateOne(
+          { id: teamId },
+          {
+            $pull: { members: { userId: user.id } },
+            $set: { updatedAt: new Date().toISOString() }
+          }
+        );
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    if (segs[0] === 'teams') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const body = await req.json();
+      const { hackathonId, name, description, maxSize, skillsNeeded } = body;
+      if (!hackathonId || !name || !description) {
+        return NextResponse.json({ error: 'hackathonId, name, and description are required' }, { status: 400 });
+      }
+      const { teams } = await getCollections();
+      const newTeam = {
+        id: uuid(),
+        hackathonId,
+        name,
+        description,
+        createdBy: user.id,
+        members: [
+          { userId: user.id, role: 'leader', joinedAt: new Date().toISOString() }
+        ],
+        maxSize: Number(maxSize) || 4,
+        skillsNeeded: skillsNeeded || [],
+        status: 'open',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await teams.insertOne(newTeam);
+      return NextResponse.json({ ok: true, team: newTeam });
+    }
+
+    if (segs[0] === 'alerts') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const body = await req.json();
+      const { type, filters, enabled } = body;
+      const { alerts } = await getCollections();
+      await alerts.updateOne(
+        { userId: user.id },
+        {
+          $set: {
+            type: type || 'weekly',
+            filters: filters || { themes: [], minPrize: 0, mode: '', beginnerFriendly: false },
+            enabled: !!enabled,
+            updatedAt: new Date().toISOString(),
+          }
+        },
+        { upsert: true }
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    if (segs[0] === 'email' && segs[1] === 'digest') {
+      const { alerts, hackathons } = await getCollections();
+      const activeAlerts = await alerts.find({ enabled: true, type: 'weekly' }).toArray();
+      const allHackathons = await hackathons.find({
+        registrationDeadline: { $gte: new Date().toISOString() }
+      }).toArray();
+      
+      const stats = {
+        activeCount: allHackathons.length,
+        totalPrize: allHackathons.reduce((s, h) => s + (h.prizePool || 0), 0),
+        closingThisWeekCount: allHackathons.filter(h => {
+          const ms = new Date(h.registrationDeadline) - new Date();
+          return ms > 0 && ms <= 7 * 24 * 60 * 60 * 1000;
+        }).length
+      };
+
+      for (const alert of activeAlerts) {
+        const matching = allHackathons.filter(h => {
+          const filters = alert.filters || {};
+          if (filters.themes && filters.themes.length > 0) {
+            const hasTheme = h.themes && h.themes.some(t => filters.themes.includes(t));
+            if (!hasTheme) return false;
+          }
+          if (filters.minPrize > 0 && (h.prizePool || 0) < filters.minPrize) {
+            return false;
+          }
+          if (filters.mode && h.mode !== filters.mode) {
+            return false;
+          }
+          if (filters.beginnerFriendly && !h.beginnerFriendly) {
+            return false;
+          }
+          return true;
+        });
+
+        await sendWeeklyDigest(alert.email, matching, stats);
+      }
+      return NextResponse.json({ ok: true, sentTo: activeAlerts.length });
     }
 
     return NextResponse.json({ error: 'route not found' }, { status: 404 });
@@ -210,9 +537,9 @@ export async function DELETE(req, { params }) {
   const url = new URL(req.url);
   try {
     if (segs[0] === 'saved') {
-      const sid = url.searchParams.get('sid');
+      const sid = url.searchParams.get('sid') || url.searchParams.get('userId');
       const hackathonId = url.searchParams.get('hackathonId');
-      if (!sid || !hackathonId) return NextResponse.json({ error: 'sid + hackathonId required' }, { status: 400 });
+      if (!sid || !hackathonId) return NextResponse.json({ error: 'sid or userId + hackathonId required' }, { status: 400 });
       const { saved, hackathons } = await getCollections();
       const r = await saved.deleteOne({ sid, hackathonId });
       if (r.deletedCount > 0) {
@@ -220,6 +547,20 @@ export async function DELETE(req, { params }) {
       }
       return NextResponse.json({ ok: true });
     }
+    if (segs[0] === 'teams') {
+      const user = await currentUser();
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const teamId = segs[1];
+      const { teams } = await getCollections();
+      const team = await teams.findOne({ id: teamId });
+      if (!team) return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+      if (team.createdBy !== user.id) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      await teams.deleteOne({ id: teamId });
+      return NextResponse.json({ ok: true });
+    }
+
     return NextResponse.json({ error: 'route not found' }, { status: 404 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });

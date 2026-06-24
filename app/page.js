@@ -9,6 +9,7 @@ import {
   CircleDot, IndianRupee, ArrowRight, Zap, AlertTriangle, X, Sun, Moon,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { useUser, SignInButton, UserButton } from '@clerk/nextjs';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +23,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 
 const ALL_THEMES = ['AI', 'Machine Learning', 'Web Development', 'Cybersecurity', 'Blockchain', 'Open Innovation', 'AR/VR', 'Mobile Development'];
 const THEME_COLORS = {
@@ -240,7 +243,64 @@ function StatCard({ icon, label, value, accent }) {
 }
 
 function Dashboard({ stats, recommended, savedIds, onToggleSave }) {
+  const { user, isSignedIn } = useUser();
+  const [alertsEnabled, setAlertsEnabled] = useState(false);
+  const [alertType, setAlertType] = useState('weekly');
+  const [selectedThemes, setSelectedThemes] = useState([]);
+  const [minPrizeLimit, setMinPrizeLimit] = useState(0);
+  const [savingAlerts, setSavingAlerts] = useState(false);
+  const [alertsLoaded, setAlertsLoaded] = useState(false);
+
+  useEffect(() => {
+    async function loadAlerts() {
+      if (!isSignedIn) return;
+      try {
+        const res = await fetch('/api/alerts').then(r => r.json());
+        setAlertsEnabled(!!res.enabled);
+        setAlertType(res.type || 'weekly');
+        setSelectedThemes(res.filters?.themes || []);
+        setMinPrizeLimit(res.filters?.minPrize || 0);
+        setAlertsLoaded(true);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    loadAlerts();
+  }, [isSignedIn]);
+
+  const handleSaveAlerts = async () => {
+    setSavingAlerts(true);
+    try {
+      await fetch('/api/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: alertsEnabled,
+          type: alertType,
+          filters: {
+            themes: selectedThemes,
+            minPrize: minPrizeLimit,
+            mode: '',
+            beginnerFriendly: false,
+          }
+        }),
+      });
+      toast.success('Alert preferences saved successfully!');
+    } catch (e) {
+      toast.error('Failed to save alert preferences');
+    } finally {
+      setSavingAlerts(false);
+    }
+  };
+
+  const toggleThemeAlert = (t) => {
+    setSelectedThemes(prev =>
+      prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]
+    );
+  };
+
   if (!stats) return <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[1,2,3,4].map(i => <Skeleton key={i} className="h-28" />)}</div>;
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -250,45 +310,140 @@ function Dashboard({ stats, recommended, savedIds, onToggleSave }) {
         <StatCard icon={<Radar className="w-5 h-5 text-sky-400" />} label="Sources tracked" value={stats.sources?.length || 0} accent="from-sky-500/20 to-sky-500/0" />
       </div>
 
-      {stats.missedCount > 0 && (
-        <Card className="overflow-hidden border-amber-500/20 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent">
-          <div className="p-6 flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-6 h-6 text-amber-400" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs font-semibold uppercase tracking-wider text-amber-400">Missed opportunity score</p>
-              <h3 className="text-xl md:text-2xl font-bold mt-1">
-                You missed <span className="text-amber-400">{stats.missedCount} hackathons</span> worth{' '}
-                <span className="text-amber-400">{formatINR(stats.missedPrize)}</span> in the last 30 days.
-              </h3>
-              <p className="text-sm text-muted-foreground mt-1">Save your favorites now and we&apos;ll remind you before they close.</p>
-            </div>
-          </div>
-        </Card>
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          {stats.missedCount > 0 && (
+            <Card className="overflow-hidden border-amber-500/20 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent">
+              <div className="p-6 flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-6 h-6 text-amber-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-amber-400">Missed opportunity score</p>
+                  <h3 className="text-xl md:text-2xl font-bold mt-1">
+                    You missed <span className="text-amber-400">{stats.missedCount} hackathons</span> worth{' '}
+                    <span className="text-amber-400">{formatINR(stats.missedPrize)}</span> in the last 30 days.
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-1">Save your favorites now and we&apos;ll remind you before they close.</p>
+                </div>
+              </div>
+            </Card>
+          )}
 
-      {stats.closingThisWeek?.length > 0 && (
-        <div>
-          <h3 className="text-lg font-bold flex items-center gap-2 mb-4"><Flame className="w-5 h-5 text-rose-400" /> Closing this week</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {stats.closingThisWeek.map(h => (
-              <HackathonCard key={h.id} h={h} isSaved={savedIds.has(h.id)} onToggleSave={onToggleSave} />
-            ))}
-          </div>
-        </div>
-      )}
+          {stats.closingThisWeek?.length > 0 && (
+            <div>
+              <h3 className="text-lg font-bold flex items-center gap-2 mb-4"><Flame className="w-5 h-5 text-rose-400" /> Closing this week</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {stats.closingThisWeek.map(h => (
+                  <HackathonCard key={h.id} h={h} isSaved={savedIds.has(h.id)} onToggleSave={onToggleSave} />
+                ))}
+              </div>
+            </div>
+          )}
 
-      {recommended?.length > 0 && (
-        <div>
-          <h3 className="text-lg font-bold flex items-center gap-2 mb-4"><Sparkles className="w-5 h-5 text-violet-400" /> Recommended for you</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {recommended.slice(0, 6).map(h => (
-              <HackathonCard key={h.id} h={h} isSaved={savedIds.has(h.id)} onToggleSave={onToggleSave} />
-            ))}
-          </div>
+          {recommended?.length > 0 && (
+            <div>
+              <h3 className="text-lg font-bold flex items-center gap-2 mb-4"><Sparkles className="w-5 h-5 text-violet-400" /> Recommended for you</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {recommended.slice(0, 6).map(h => (
+                  <HackathonCard key={h.id} h={h} isSaved={savedIds.has(h.id)} onToggleSave={onToggleSave} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+
+        <div>
+          <Card className="p-5 border-border/40 bg-card/40 backdrop-blur-md sticky top-20">
+            <h3 className="text-base font-bold flex items-center gap-2 mb-3">
+              <Bookmark className="w-4 h-4 text-violet-400" /> Email Notifications
+            </h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              Get notified when new hackathons matching your interests are tracked.
+            </p>
+
+            {!isSignedIn ? (
+              <div className="text-center py-6 border border-dashed border-border/60 rounded-xl bg-card/10">
+                <p className="text-xs text-muted-foreground mb-3">Sign in to customize email alerts</p>
+                <SignInButton mode="modal">
+                  <Button variant="outline" size="sm" className="h-8">Sign In</Button>
+                </SignInButton>
+              </div>
+            ) : !alertsLoaded ? (
+              <Skeleton className="h-48 rounded-xl" />
+            ) : (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="alerts-enable" className="font-semibold text-sm cursor-pointer">Enable Email Alerts</Label>
+                  <Switch id="alerts-enable" checked={alertsEnabled} onCheckedChange={setAlertsEnabled} />
+                </div>
+
+                {alertsEnabled && (
+                  <div className="space-y-4 pt-3 border-t border-border/30">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-muted-foreground">Notification Frequency</Label>
+                      <Select value={alertType} onValueChange={setAlertType}>
+                        <SelectTrigger className="bg-background border-border/40 h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="instant">Instant Alert (as they drop)</SelectItem>
+                          <SelectItem value="weekly">Weekly Summary Digest</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-muted-foreground">Filter by Themes</Label>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {ALL_THEMES.map(t => {
+                          const isSelected = selectedThemes.includes(t);
+                          return (
+                            <button
+                              key={t}
+                              onClick={() => toggleThemeAlert(t)}
+                              className={`text-[9px] px-2 py-1 rounded-full border transition-all ${
+                                isSelected
+                                  ? 'bg-primary border-primary text-primary-foreground font-semibold'
+                                  : 'bg-background border-border/60 text-muted-foreground hover:border-border'
+                              }`}
+                            >
+                              {t}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <Label className="font-semibold">Min Prize Pool</Label>
+                        <span>₹{minPrizeLimit.toLocaleString('en-IN')}+</span>
+                      </div>
+                      <Slider
+                        min={0}
+                        max={1000000}
+                        step={50000}
+                        value={[minPrizeLimit]}
+                        onValueChange={val => setMinPrizeLimit(val[0])}
+                        className="py-2"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleSaveAlerts}
+                  disabled={savingAlerts}
+                  className="w-full bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:opacity-90 text-white h-9 text-xs font-semibold"
+                >
+                  {savingAlerts ? 'Saving...' : 'Save Settings'}
+                </Button>
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
@@ -340,7 +495,9 @@ function App() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  const { user, isSignedIn } = useUser();
   const [sid, setSid] = useState(null);
+  const activeUserId = isSignedIn ? user?.id : sid;
   const [tab, setTab] = useState('discover');
   const [query, setQuery] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
@@ -394,27 +551,27 @@ function App() {
   }, [buildQuery]);
 
   const refreshSaved = useCallback(async () => {
-    if (!sid) return;
-    const r = await fetch(`/api/saved?sid=${sid}`).then(r => r.json());
+    if (!activeUserId) return;
+    const r = await fetch(`/api/saved?userId=${activeUserId}`).then(r => r.json());
     setSavedHackathons(r.hackathons || []);
     setSavedIds(new Set((r.hackathons || []).map(h => h.id)));
-  }, [sid]);
+  }, [activeUserId]);
 
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => { refreshSaved(); }, [refreshSaved]);
 
   const onToggleSave = async (h) => {
-    if (!sid) return;
+    if (!activeUserId) return;
     const isSaved = savedIds.has(h.id);
     if (isSaved) {
       setSavedIds(s => { const n = new Set(s); n.delete(h.id); return n; });
       setSavedHackathons(prev => prev.filter(x => x.id !== h.id));
-      await fetch(`/api/saved?sid=${sid}&hackathonId=${h.id}`, { method: 'DELETE' });
+      await fetch(`/api/saved?userId=${activeUserId}&hackathonId=${h.id}`, { method: 'DELETE' });
       toast('Removed from saved');
     } else {
       setSavedIds(s => new Set(s).add(h.id));
       setSavedHackathons(prev => [h, ...prev]);
-      await fetch('/api/saved', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid, hackathonId: h.id }) });
+      await fetch('/api/saved', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: activeUserId, hackathonId: h.id }) });
       toast.success(`Saved · ${daysLeft(h.registrationDeadline)}d to register`);
     }
   };
@@ -454,6 +611,7 @@ function App() {
               { id: 'discover', label: 'Discover', icon: Search },
               { id: 'trending', label: 'Trending', icon: TrendingUp },
               { id: 'saved', label: 'Saved', icon: Bookmark },
+              { id: 'teams', label: 'Teams', icon: Users },
               { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
             ].map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
@@ -469,14 +627,23 @@ function App() {
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground hidden sm:inline">{stats?.activeCount || 0} live</span>
             {mounted && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                className="w-8 h-8 rounded-full border border-border/40 hover:bg-accent"
-              >
-                {theme === 'dark' ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-violet-400" />}
-              </Button>
+              <>
+                {isSignedIn ? (
+                  <UserButton afterSignOutUrl="/" />
+                ) : (
+                  <SignInButton mode="modal">
+                    <Button variant="outline" size="sm" className="h-8">Sign In</Button>
+                  </SignInButton>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  className="w-8 h-8 rounded-full border border-border/40 hover:bg-accent"
+                >
+                  {theme === 'dark' ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-violet-400" />}
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -486,10 +653,11 @@ function App() {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="md:hidden mb-4 w-full grid grid-cols-4">
+          <TabsList className="md:hidden mb-4 w-full grid grid-cols-5">
             <TabsTrigger value="discover">Discover</TabsTrigger>
             <TabsTrigger value="trending">Trending</TabsTrigger>
             <TabsTrigger value="saved">Saved</TabsTrigger>
+            <TabsTrigger value="teams">Teams</TabsTrigger>
             <TabsTrigger value="dashboard">Stats</TabsTrigger>
           </TabsList>
 
@@ -623,6 +791,10 @@ function App() {
             )}
           </TabsContent>
 
+          <TabsContent value="teams" id="teams" className="mt-0">
+            <TeamsPanel hackathons={hackathons} />
+          </TabsContent>
+
           <TabsContent value="dashboard" id="dashboard" className="mt-0">
             <div className="mb-6">
               <h2 className="text-2xl md:text-3xl font-bold flex items-center gap-2"><LayoutDashboard className="w-7 h-7 text-violet-400" /> Opportunity dashboard</h2>
@@ -643,3 +815,485 @@ function App() {
 }
 
 export default App;
+
+function TeamsPanel({ hackathons }) {
+  const { user, isSignedIn } = useUser();
+  const [profile, setProfile] = useState(null);
+  const [teams, setTeams] = useState([]);
+  const [teammates, setTeammates] = useState([]);
+  const [selectedHackathonId, setSelectedHackathonId] = useState('all-hackathons');
+  const [teamsLoading, setTeamsLoading] = useState(true);
+  const [teammatesLoading, setTeammatesLoading] = useState(true);
+  
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [createTeamOpen, setCreateTeamOpen] = useState(false);
+  
+  // Profile Form State
+  const [bio, setBio] = useState('');
+  const [skills, setSkills] = useState('');
+  const [github, setGithub] = useState('');
+  const [linkedin, setLinkedin] = useState('');
+  const [lookingForTeam, setLookingForTeam] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  
+  // Team Form State
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamDesc, setNewTeamDesc] = useState('');
+  const [newTeamSize, setNewTeamSize] = useState(4);
+  const [newTeamSkills, setNewTeamSkills] = useState('');
+  const [newTeamHackathonId, setNewTeamHackathonId] = useState('');
+  const [creatingTeam, setCreatingTeam] = useState(false);
+
+  const fetchProfile = useCallback(async () => {
+    if (!isSignedIn) return;
+    try {
+      const res = await fetch('/api/users/me').then(r => r.json());
+      setProfile(res);
+      setBio(res.bio || '');
+      setSkills((res.skills || []).join(', '));
+      setGithub(res.github || '');
+      setLinkedin(res.linkedin || '');
+      setLookingForTeam(!!res.lookingForTeam);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [isSignedIn]);
+
+  const fetchTeams = useCallback(async () => {
+    setTeamsLoading(true);
+    try {
+      const url = selectedHackathonId && selectedHackathonId !== 'all-hackathons' 
+        ? `/api/teams?hackathonId=${selectedHackathonId}` 
+        : '/api/teams';
+      const res = await fetch(url).then(r => r.json());
+      setTeams(res.teams || []);
+    } catch (e) {
+      toast.error('Failed to load teams');
+    } finally {
+      setTeamsLoading(false);
+    }
+  }, [selectedHackathonId]);
+
+  const fetchTeammates = useCallback(async () => {
+    setTeammatesLoading(true);
+    try {
+      const res = await fetch('/api/users/teammates').then(r => r.json());
+      setTeammates(res.teammates || []);
+    } catch (e) {
+      toast.error('Failed to load teammates');
+    } finally {
+      setTeammatesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  useEffect(() => {
+    fetchTeams();
+  }, [fetchTeams]);
+
+  useEffect(() => {
+    fetchTeammates();
+  }, [fetchTeammates]);
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setSavingProfile(true);
+    try {
+      const skillsArray = skills.split(',').map(s => s.trim()).filter(Boolean);
+      await fetch('/api/users/me', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bio, skills: skillsArray, github, linkedin, lookingForTeam }),
+      });
+      toast.success('Profile updated successfully!');
+      setProfileOpen(false);
+      fetchProfile();
+      fetchTeammates();
+    } catch (e) {
+      toast.error('Failed to update profile');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleCreateTeam = async (e) => {
+    e.preventDefault();
+    if (!newTeamHackathonId) {
+      toast.error('Please select a hackathon');
+      return;
+    }
+    setCreatingTeam(true);
+    try {
+      const skillsArray = newTeamSkills.split(',').map(s => s.trim()).filter(Boolean);
+      await fetch('/api/teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hackathonId: newTeamHackathonId,
+          name: newTeamName,
+          description: newTeamDesc,
+          maxSize: newTeamSize,
+          skillsNeeded: skillsArray,
+        }),
+      });
+      toast.success('Team created successfully!');
+      setCreateTeamOpen(false);
+      setNewTeamName('');
+      setNewTeamDesc('');
+      setNewTeamSkills('');
+      fetchTeams();
+    } catch (e) {
+      toast.error('Failed to create team');
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
+  const handleJoinTeam = async (teamId) => {
+    if (!isSignedIn) {
+      toast.error('Please sign in to join a team');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/teams/${teamId}/join`, { method: 'POST' }).then(r => r.json());
+      if (res.error) {
+        toast.error(res.error);
+      } else {
+        toast.success('Joined team successfully!');
+        fetchTeams();
+      }
+    } catch (e) {
+      toast.error('Failed to join team');
+    }
+  };
+
+  const handleLeaveTeam = async (teamId) => {
+    try {
+      await fetch(`/api/teams/${teamId}/leave`, { method: 'POST' });
+      toast.success('Left team');
+      fetchTeams();
+    } catch (e) {
+      toast.error('Failed to leave team');
+    }
+  };
+
+  const handleDeleteTeam = async (teamId) => {
+    try {
+      await fetch(`/api/teams/${teamId}`, { method: 'DELETE' });
+      toast.success('Team deleted');
+      fetchTeams();
+    } catch (e) {
+      toast.error('Failed to delete team');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card/30 p-6 rounded-2xl border border-border/40 backdrop-blur-md">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+            <Users className="w-7 h-7 text-primary animate-pulse" /> Team Finder
+          </h2>
+          <p className="text-muted-foreground text-sm mt-1">
+            Find team members, join existing groups, or register your own team.
+          </p>
+        </div>
+        {isSignedIn && (
+          <div className="flex items-center gap-3">
+            <Button onClick={() => setProfileOpen(true)} variant="outline" className="border-border/60">
+              Edit Profile
+            </Button>
+            <Button onClick={() => {
+              setNewTeamHackathonId(selectedHackathonId && selectedHackathonId !== 'all-hackathons' ? selectedHackathonId : hackathons[0]?.id || '');
+              setCreateTeamOpen(true);
+            }} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:opacity-90 text-white">
+              Create Team
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left 2 Columns: Hackathon Teams */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold whitespace-nowrap text-muted-foreground">Filter by Hackathon:</span>
+            <Select value={selectedHackathonId} onValueChange={setSelectedHackathonId}>
+              <SelectTrigger className="bg-card/40 border-border/40 max-w-xs">
+                <SelectValue placeholder="All Hackathons" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-hackathons">All Hackathons</SelectItem>
+                {hackathons.map(h => (
+                  <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {teamsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Skeleton className="h-44 rounded-xl" />
+              <Skeleton className="h-44 rounded-xl" />
+            </div>
+          ) : teams.length === 0 ? (
+            <Card className="p-12 text-center bg-card/20 border-border/40">
+              <Users className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+              <h3 className="font-semibold">No teams found</h3>
+              <p className="text-sm text-muted-foreground mt-1">Be the first to create a team for this hackathon!</p>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {teams.map(team => {
+                const hackathon = hackathons.find(h => h.id === team.hackathonId);
+                const isLeader = team.createdBy === user?.id;
+                const isMember = team.members.some(m => m.userId === user?.id);
+                return (
+                  <Card key={team.id} className="p-5 border-border/40 bg-card/40 flex flex-col justify-between hover:border-border transition-all">
+                    <div>
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <h4 className="font-bold text-base leading-snug">{team.name}</h4>
+                        <Badge variant="secondary" className="text-[10px] whitespace-nowrap shrink-0">
+                          {team.members.length}/{team.maxSize} members
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-primary font-medium mb-3 truncate">
+                        For: {hackathon?.name || 'Hackathon'}
+                      </p>
+                      <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                        {team.description}
+                      </p>
+                      
+                      {team.skillsNeeded && team.skillsNeeded.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                          {team.skillsNeeded.map(s => (
+                            <Badge key={s} variant="outline" className="text-[10px] border-border/60">
+                              {s}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="border-t border-border/40 pt-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {team.members.map(m => (
+                            <div key={m.userId} className="flex items-center gap-1.5 bg-card/80 py-1 px-2 rounded-full border border-border/40 text-xs">
+                              {m.avatar ? (
+                                <img src={m.avatar} alt={m.name} className="w-4 h-4 rounded-full" />
+                              ) : (
+                                <div className="w-4 h-4 rounded-full bg-primary/20 flex items-center justify-center text-[9px] font-bold">
+                                  {m.name[0]}
+                                </div>
+                              )}
+                              <span className="truncate max-w-[80px] font-medium">{m.name}</span>
+                              {m.role === 'leader' && (
+                                <Badge className="text-[8px] px-1 py-0 bg-amber-500/20 text-amber-300 border-amber-500/30 scale-90">
+                                  L
+                                </Badge>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        {isLeader ? (
+                          <Button onClick={() => handleDeleteTeam(team.id)} variant="destructive" size="sm" className="h-8 text-xs">
+                            Delete Team
+                          </Button>
+                        ) : isMember ? (
+                          <Button onClick={() => handleLeaveTeam(team.id)} variant="outline" size="sm" className="h-8 text-xs">
+                            Leave Team
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => handleJoinTeam(team.id)}
+                            disabled={team.members.length >= team.maxSize}
+                            size="sm"
+                            className="h-8 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
+                          >
+                            {team.members.length >= team.maxSize ? 'Full' : 'Join Team'}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: Teammates Pool */}
+        <div className="space-y-4">
+          <h3 className="font-semibold text-base flex items-center gap-2">
+            <Flame className="w-4 h-4 text-orange-400" /> Teammate Pool
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Developers looking for teams. Connect with them directly.
+          </p>
+
+          {teammatesLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-28 rounded-lg" />
+              <Skeleton className="h-28 rounded-lg" />
+            </div>
+          ) : teammates.length === 0 ? (
+            <Card className="p-8 text-center bg-card/10 border-border/40">
+              <p className="text-sm text-muted-foreground">No developers listed yet.</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {teammates.map(tm => (
+                <Card key={tm.clerkId} className="p-4 border-border/40 bg-card/30 hover:border-border transition-all">
+                  <div className="flex items-start gap-3 mb-2">
+                    {tm.avatar ? (
+                      <img src={tm.avatar} alt={tm.name} className="w-8 h-8 rounded-full border border-border/40 shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center font-bold text-sm shrink-0">
+                        {tm.name[0]}
+                      </div>
+                    )}
+                    <div>
+                      <h4 className="font-bold text-sm leading-none">{tm.name}</h4>
+                      <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">{tm.bio || 'No bio provided'}</p>
+                    </div>
+                  </div>
+
+                  {tm.skills && tm.skills.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {tm.skills.slice(0, 4).map(s => (
+                        <Badge key={s} variant="secondary" className="text-[9px] px-1.5 py-0">
+                          {s}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between border-t border-border/20 pt-2 text-[10px]">
+                    <div className="flex items-center gap-2">
+                      {tm.github && (
+                        <a href={tm.github.startsWith('http') ? tm.github : `https://${tm.github}`} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                          <ExternalLink className="w-3 h-3" /> GitHub
+                        </a>
+                      )}
+                      {tm.linkedin && (
+                        <a href={tm.linkedin.startsWith('http') ? tm.linkedin : `https://${tm.linkedin}`} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                          <ExternalLink className="w-3 h-3" /> LinkedIn
+                        </a>
+                      )}
+                    </div>
+                    <span className="text-[9px] text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full font-medium">
+                      Available
+                    </span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Edit Profile Dialog */}
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-card border-border/40">
+          <DialogHeader>
+            <DialogTitle>Edit Teammate Profile</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveProfile} className="space-y-4 pt-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="bio">About You / Bio</Label>
+              <Textarea id="bio" value={bio} onChange={e => setBio(e.target.value)} placeholder="I'm a fullstack React developer interested in AI/ML..." rows={3} />
+            </div>
+            
+            <div className="space-y-1.5">
+              <Label htmlFor="skills">Skills (comma-separated)</Label>
+              <Input id="skills" value={skills} onChange={e => setSkills(e.target.value)} placeholder="React, Node.js, Python, Tailwind" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="github">GitHub Profile Link</Label>
+              <Input id="github" value={github} onChange={e => setGithub(e.target.value)} placeholder="github.com/username" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="linkedin">LinkedIn Profile Link</Label>
+              <Input id="linkedin" value={linkedin} onChange={e => setLinkedin(e.target.value)} placeholder="linkedin.com/in/username" />
+            </div>
+
+            <div className="flex items-center justify-between border-t border-border/40 pt-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="looking">Looking for Team</Label>
+                <p className="text-[10px] text-muted-foreground">List yourself in the teammate pool</p>
+              </div>
+              <Switch id="looking" checked={lookingForTeam} onCheckedChange={setLookingForTeam} />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setProfileOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={savingProfile} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white">
+                {savingProfile ? 'Saving...' : 'Save Profile'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Team Dialog */}
+      <Dialog open={createTeamOpen} onOpenChange={setCreateTeamOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-card border-border/40">
+          <DialogHeader>
+            <DialogTitle>Create Team</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateTeam} className="space-y-4 pt-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="teamHackathon">Select Hackathon</Label>
+              <Select value={newTeamHackathonId} onValueChange={setNewTeamHackathonId}>
+                <SelectTrigger id="teamHackathon" className="bg-background border-border/40">
+                  <SelectValue placeholder="Select hackathon" />
+                </SelectTrigger>
+                <SelectContent>
+                  {hackathons.map(h => (
+                    <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="teamName">Team Name</Label>
+              <Input id="teamName" required value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="Team CodeCraft" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="teamDesc">Description</Label>
+              <Textarea id="teamDesc" required value={newTeamDesc} onChange={e => setNewTeamDesc(e.target.value)} placeholder="Looking for UI/UX designer and Frontend developer for our blockchain project..." rows={3} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="teamSize">Max Team Size</Label>
+              <Input id="teamSize" type="number" min={2} max={10} value={newTeamSize} onChange={e => setNewTeamSize(Number(e.target.value))} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="teamSkills">Skills Needed (comma-separated)</Label>
+              <Input id="teamSkills" value={newTeamSkills} onChange={e => setNewTeamSkills(e.target.value)} placeholder="React, Solidity, Figma" />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setCreateTeamOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={creatingTeam} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white">
+                {creatingTeam ? 'Creating...' : 'Create Team'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
