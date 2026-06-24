@@ -810,7 +810,16 @@ function App() {
                     <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-primary' : ''}`} />
                     <span>{isSyncing ? 'Sync' : 'Sync Latest'}</span>
                   </Button>
-                  {isSignedIn ? (
+                  {!mounted ? (
+                    <Button
+                      variant="default"
+                      disabled
+                      className="h-11 gap-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 opacity-50 border-0 text-white shrink-0 font-medium"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Host Hackathon</span>
+                    </Button>
+                  ) : isSignedIn ? (
                     <Button
                       variant="default"
                       className="h-11 gap-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:opacity-90 border-0 text-white shrink-0 font-medium"
