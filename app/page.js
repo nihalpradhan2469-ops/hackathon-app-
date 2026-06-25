@@ -952,6 +952,185 @@ function App() {
           Built with <span className="text-rose-400">♥</span> by Nihal Pradhan for Indian builders · Tracks Unstop · Devfolio · Devpost · HackerEarth · Reskilll
         </div>
       </footer>
+
+      {/* Submit Hackathon Dialog */}
+      <Dialog open={submitOpen} onOpenChange={setSubmitOpen}>
+        <DialogContent className="sm:max-w-[550px] max-h-[85vh] overflow-y-auto bg-card border-border/40">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-amber-400 animate-pulse" />
+              <span>Host a Hackathon</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmitHackathon} className="space-y-4 py-2">
+            {/* Basic Info */}
+            <div className="space-y-2">
+              <Label htmlFor="subName" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Hackathon Name *</Label>
+              <Input
+                id="subName"
+                required
+                value={formName}
+                onChange={e => setFormName(e.target.value)}
+                placeholder="e.g. Innovate Delhi 2026"
+                className="bg-background/50 border-border/40"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="subOrg" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Organizer *</Label>
+                <Input
+                  id="subOrg"
+                  required
+                  value={formOrganizer}
+                  onChange={e => setFormOrganizer(e.target.value)}
+                  placeholder="e.g. IIT Delhi Coding Club"
+                  className="bg-background/50 border-border/40"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="subPrize" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Prize Pool (INR)</Label>
+                <Input
+                  id="subPrize"
+                  type="number"
+                  value={formPrize}
+                  onChange={e => setFormPrize(e.target.value)}
+                  placeholder="e.g. 150000"
+                  className="bg-background/50 border-border/40"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="subDesc" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Description *</Label>
+              <Textarea
+                id="subDesc"
+                required
+                value={formDesc}
+                onChange={e => setFormDesc(e.target.value)}
+                placeholder="Write a brief overview of the hackathon, prizes, rules, etc."
+                className="bg-background/50 border-border/40"
+                rows={3}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="subDeadline" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Registration Deadline *</Label>
+                <Input
+                  id="subDeadline"
+                  type="date"
+                  required
+                  value={formDeadline}
+                  onChange={e => setFormDeadline(e.target.value)}
+                  className="bg-background/50 border-border/40"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="subLink" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Registration URL *</Label>
+                <Input
+                  id="subLink"
+                  type="url"
+                  required
+                  value={formLink}
+                  onChange={e => setFormLink(e.target.value)}
+                  placeholder="e.g. Google Form link, website URL"
+                  className="bg-background/50 border-border/40"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="subMode" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Mode</Label>
+                <Select value={formMode} onValueChange={setFormMode}>
+                  <SelectTrigger className="bg-background/50 border-border/40"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="online">Online</SelectItem>
+                    <SelectItem value="offline">Offline</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="subMinTeam" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Min Team Members</Label>
+                <Input
+                  id="subMinTeam"
+                  type="number"
+                  min="1"
+                  value={formMinTeam}
+                  onChange={e => setFormMinTeam(e.target.value)}
+                  className="bg-background/50 border-border/40"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="subMaxTeam" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Max Team Members</Label>
+                <Input
+                  id="subMaxTeam"
+                  type="number"
+                  min="1"
+                  value={formMaxTeam}
+                  onChange={e => setFormMaxTeam(e.target.value)}
+                  className="bg-background/50 border-border/40"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="subLoc" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Location / Venue</Label>
+              <Input
+                id="subLoc"
+                value={formLocation}
+                onChange={e => setFormLocation(e.target.value)}
+                placeholder="e.g. Auditorium, Block 3 / Zoom Link"
+                className="bg-background/50 border-border/40"
+              />
+            </div>
+
+            {/* Switches */}
+            <div className="flex justify-between gap-4 pt-1">
+              <div className="flex items-center justify-between gap-3 flex-1 border border-border/30 rounded-lg p-2.5 bg-background/30">
+                <Label htmlFor="subBeginner" className="text-xs font-semibold cursor-pointer">Beginner Friendly</Label>
+                <Switch id="subBeginner" checked={formBeginner} onCheckedChange={setFormBeginner} />
+              </div>
+              <div className="flex items-center justify-between gap-3 flex-1 border border-border/30 rounded-lg p-2.5 bg-background/30">
+                <Label htmlFor="subStudent" className="text-xs font-semibold cursor-pointer">Student Only</Label>
+                <Switch id="subStudent" checked={formStudent} onCheckedChange={setFormStudent} />
+              </div>
+            </div>
+
+            {/* Themes */}
+            <div className="space-y-2">
+              <Label className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Select Tech Themes</Label>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {ALL_THEMES.map(t => {
+                  const active = formThemes.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setFormThemes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-all ${active ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/50 border-border/40 text-muted-foreground hover:border-border'}`}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <DialogFooter className="pt-4 flex flex-row gap-2 justify-end">
+              <Button type="button" variant="outline" onClick={() => { setSubmitOpen(false); resetForm(); }} className="h-10">
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting} className="h-10 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white hover:opacity-90">
+                {submitting ? 'Submitting...' : 'List Hackathon'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1249,14 +1428,14 @@ function TeamsPanel({ hackathons }) {
               {teams.map(team => {
                 const hackathon = hackathons.find(h => h.id === team.hackathonId);
                 const isLeader = team.createdBy === user?.id;
-                const isMember = team.members.some(m => m.userId === user?.id);
+                const isMember = (team.members || []).some(m => m.userId === user?.id);
                 return (
                   <Card key={team.id} className="p-5 border-border/40 bg-card/40 flex flex-col justify-between hover:border-border transition-all">
                     <div>
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <h4 className="font-bold text-base leading-snug">{team.name}</h4>
                         <Badge variant="secondary" className="text-[10px] whitespace-nowrap shrink-0">
-                          {team.members.length}/{team.maxSize} members
+                          {(team.members || []).length}/{team.maxSize} members
                         </Badge>
                       </div>
                       <p className="text-xs text-primary font-medium mb-3 truncate">
@@ -1266,9 +1445,9 @@ function TeamsPanel({ hackathons }) {
                         {team.description}
                       </p>
                       
-                      {team.skillsNeeded && team.skillsNeeded.length > 0 && (
+                      {(team.skillsNeeded || []).length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mb-4">
-                          {team.skillsNeeded.map(s => (
+                          {(team.skillsNeeded || []).map(s => (
                             <Badge key={s} variant="outline" className="text-[10px] border-border/60">
                               {s}
                             </Badge>
@@ -1280,16 +1459,16 @@ function TeamsPanel({ hackathons }) {
                     <div className="space-y-4">
                       <div className="border-t border-border/40 pt-3">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {team.members.map(m => (
+                          {(team.members || []).map(m => (
                             <div key={m.userId} className="flex items-center gap-1.5 bg-card/80 py-1 px-2 rounded-full border border-border/40 text-xs">
                               {m.avatar ? (
-                                <img src={m.avatar} alt={m.name} className="w-4 h-4 rounded-full" />
+                                <img src={m.avatar} alt={m.name || 'Anonymous'} className="w-4 h-4 rounded-full" />
                               ) : (
                                 <div className="w-4 h-4 rounded-full bg-primary/20 flex items-center justify-center text-[9px] font-bold">
-                                  {m.name[0]}
+                                  {(m.name || 'Anonymous')[0]}
                                 </div>
                               )}
-                              <span className="truncate max-w-[80px] font-medium">{m.name}</span>
+                              <span className="truncate max-w-[80px] font-medium">{m.name || 'Anonymous'}</span>
                               {m.role === 'leader' && (
                                 <Badge className="text-[8px] px-1 py-0 bg-amber-500/20 text-amber-300 border-amber-500/30 scale-90">
                                   L
@@ -1317,11 +1496,11 @@ function TeamsPanel({ hackathons }) {
                         ) : (
                           <Button
                             onClick={() => handleJoinTeam(team.id)}
-                            disabled={team.members.length >= team.maxSize}
+                            disabled={(team.members || []).length >= team.maxSize}
                             size="sm"
                             className="h-8 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
                           >
-                            {team.members.length >= team.maxSize ? 'Full' : 'Join Team'}
+                            {(team.members || []).length >= team.maxSize ? 'Full' : 'Join Team'}
                           </Button>
                         )}
                       </div>
@@ -1357,21 +1536,21 @@ function TeamsPanel({ hackathons }) {
                 <Card key={tm.clerkId} className="p-4 border-border/40 bg-card/30 hover:border-border transition-all">
                   <div className="flex items-start gap-3 mb-2">
                     {tm.avatar ? (
-                      <img src={tm.avatar} alt={tm.name} className="w-8 h-8 rounded-full border border-border/40 shrink-0" />
+                      <img src={tm.avatar} alt={tm.name || 'Anonymous'} className="w-8 h-8 rounded-full border border-border/40 shrink-0" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center font-bold text-sm shrink-0">
-                        {tm.name[0]}
+                        {(tm.name || 'Anonymous')[0]}
                       </div>
                     )}
                     <div>
-                      <h4 className="font-bold text-sm leading-none">{tm.name}</h4>
+                      <h4 className="font-bold text-sm leading-none">{tm.name || 'Anonymous'}</h4>
                       <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">{tm.bio || 'No bio provided'}</p>
                     </div>
                   </div>
 
-                  {tm.skills && tm.skills.length > 0 && (
+                  {(tm.skills || []).length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-3">
-                      {tm.skills.slice(0, 4).map(s => (
+                      {(tm.skills || []).slice(0, 4).map(s => (
                         <Badge key={s} variant="secondary" className="text-[9px] px-1.5 py-0">
                           {s}
                         </Badge>
@@ -1575,185 +1754,6 @@ function TeamsPanel({ hackathons }) {
               <p className="text-[11px] text-muted-foreground">An invite email with the join link will be sent to this address.</p>
             </form>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Submit Hackathon Dialog */}
-      <Dialog open={submitOpen} onOpenChange={setSubmitOpen}>
-        <DialogContent className="sm:max-w-[550px] max-h-[85vh] overflow-y-auto bg-card border-border/40">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-amber-400 animate-pulse" />
-              <span>Host a Hackathon</span>
-            </DialogTitle>
-          </DialogHeader>
-
-          <form onSubmit={handleSubmitHackathon} className="space-y-4 py-2">
-            {/* Basic Info */}
-            <div className="space-y-2">
-              <Label htmlFor="subName" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Hackathon Name *</Label>
-              <Input
-                id="subName"
-                required
-                value={formName}
-                onChange={e => setFormName(e.target.value)}
-                placeholder="e.g. Innovate Delhi 2026"
-                className="bg-background/50 border-border/40"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="subOrg" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Organizer *</Label>
-                <Input
-                  id="subOrg"
-                  required
-                  value={formOrganizer}
-                  onChange={e => setFormOrganizer(e.target.value)}
-                  placeholder="e.g. IIT Delhi Coding Club"
-                  className="bg-background/50 border-border/40"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="subPrize" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Prize Pool (INR)</Label>
-                <Input
-                  id="subPrize"
-                  type="number"
-                  value={formPrize}
-                  onChange={e => setFormPrize(e.target.value)}
-                  placeholder="e.g. 150000"
-                  className="bg-background/50 border-border/40"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="subDesc" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Description *</Label>
-              <Textarea
-                id="subDesc"
-                required
-                value={formDesc}
-                onChange={e => setFormDesc(e.target.value)}
-                placeholder="Write a brief overview of the hackathon, prizes, rules, etc."
-                className="bg-background/50 border-border/40"
-                rows={3}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="subDeadline" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Registration Deadline *</Label>
-                <Input
-                  id="subDeadline"
-                  type="date"
-                  required
-                  value={formDeadline}
-                  onChange={e => setFormDeadline(e.target.value)}
-                  className="bg-background/50 border-border/40"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="subLink" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Registration URL *</Label>
-                <Input
-                  id="subLink"
-                  type="url"
-                  required
-                  value={formLink}
-                  onChange={e => setFormLink(e.target.value)}
-                  placeholder="e.g. Google Form link, website URL"
-                  className="bg-background/50 border-border/40"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="subMode" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Mode</Label>
-                <Select value={formMode} onValueChange={setFormMode}>
-                  <SelectTrigger className="bg-background/50 border-border/40"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="online">Online</SelectItem>
-                    <SelectItem value="offline">Offline</SelectItem>
-                    <SelectItem value="hybrid">Hybrid</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="subMinTeam" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Min Team Members</Label>
-                <Input
-                  id="subMinTeam"
-                  type="number"
-                  min="1"
-                  value={formMinTeam}
-                  onChange={e => setFormMinTeam(e.target.value)}
-                  className="bg-background/50 border-border/40"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="subMaxTeam" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Max Team Members</Label>
-                <Input
-                  id="subMaxTeam"
-                  type="number"
-                  min="1"
-                  value={formMaxTeam}
-                  onChange={e => setFormMaxTeam(e.target.value)}
-                  className="bg-background/50 border-border/40"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="subLoc" className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Location / Venue</Label>
-              <Input
-                id="subLoc"
-                value={formLocation}
-                onChange={e => setFormLocation(e.target.value)}
-                placeholder="e.g. Auditorium, Block 3 / Zoom Link"
-                className="bg-background/50 border-border/40"
-              />
-            </div>
-
-            {/* Switches */}
-            <div className="flex justify-between gap-4 pt-1">
-              <div className="flex items-center justify-between gap-3 flex-1 border border-border/30 rounded-lg p-2.5 bg-background/30">
-                <Label htmlFor="subBeginner" className="text-xs font-semibold cursor-pointer">Beginner Friendly</Label>
-                <Switch id="subBeginner" checked={formBeginner} onCheckedChange={setFormBeginner} />
-              </div>
-              <div className="flex items-center justify-between gap-3 flex-1 border border-border/30 rounded-lg p-2.5 bg-background/30">
-                <Label htmlFor="subStudent" className="text-xs font-semibold cursor-pointer">Student Only</Label>
-                <Switch id="subStudent" checked={formStudent} onCheckedChange={setFormStudent} />
-              </div>
-            </div>
-
-            {/* Themes */}
-            <div className="space-y-2">
-              <Label className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Select Tech Themes</Label>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {ALL_THEMES.map(t => {
-                  const active = formThemes.includes(t);
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setFormThemes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-all ${active ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/50 border-border/40 text-muted-foreground hover:border-border'}`}
-                    >
-                      {t}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <DialogFooter className="pt-4 flex flex-row gap-2 justify-end">
-              <Button type="button" variant="outline" onClick={() => { setSubmitOpen(false); resetForm(); }} className="h-10">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting} className="h-10 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white hover:opacity-90">
-                {submitting ? 'Submitting...' : 'List Hackathon'}
-              </Button>
-            </DialogFooter>
-          </form>
         </DialogContent>
       </Dialog>
     </div>
